@@ -18,6 +18,7 @@ func main() {
 
 	authRouter.HandleFunc("/login", Routers.LoginHandler)
 	authRouter.HandleFunc("/registration", Routers.RegHandler)
+	authRouter.HandleFunc("/mic", Routers.MicHandler)
 
 	port := fmt.Sprintf(":%s", Env.Envfile.PORT)
 	http.ListenAndServe(port, r)

@@ -24,8 +24,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var id int
-	err = Postgres.Conn.QueryRow(context.Background(), "SELECT id, login, password FROM users WHERE login = $1", userReq.Login).Scan(&id, &userStored.Login, &userStored.Password)
+	err = Postgres.Conn.QueryRow(context.Background(), "SELECT login, password FROM users WHERE login = $1", userReq.Login).Scan(&userStored.Login, &userStored.Password)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			http.Error(w, "Wrong login or password", http.StatusNotFound)
@@ -41,7 +40,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := JwtTokens.GenerateJWTToken(userReq.Login, userStored.Password)
+	token, err := JwtTokens.GenerateJWTToken(userReq.Login, userReq.Password)
 	if err != nil {
 		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
 		return
@@ -53,6 +52,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		Token: token,
 	}
 	json.NewEncoder(w).Encode(response)
+	return
 }
 
 func Registration(w http.ResponseWriter, r *http.Request) {
@@ -117,7 +117,7 @@ func Registration(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	response := struct {
-		Token string `json:"message"`
+		Token string `json:"token"`
 	}{
 		Token: token,
 	}
