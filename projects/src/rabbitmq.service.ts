@@ -1,4 +1,3 @@
-// rabbitmq.service.ts
 import { Injectable } from '@nestjs/common';
 import * as amqp from 'amqplib';
 
@@ -8,22 +7,20 @@ export class RabbitMQService {
     private channel: amqp.Channel;
 
     async connect() {
-        this.connection = await amqp.connect('amqp://localhost');
-        this.channel = await this.connection.createChannel();
+        if (!this.connection || !this.channel) {
+            this.connection = await amqp.connect('amqp://guest:guest@localhost:5672/');
+            this.channel = await this.connection.createChannel();
+        }
     }
 
-    async publish(queue: string, message: string) {
-        if (!this.channel) {
-            await this.connect();
-        }
+    async publish(queue: string, message: string, options?: amqp.Options.Publish) {
+        await this.connect();
         await this.channel.assertQueue(queue, { durable: false });
-        this.channel.sendToQueue(queue, Buffer.from(message));
+        this.channel.sendToQueue(queue, Buffer.from(message), options);
     }
 
     async consume(queue: string, callback: (msg: amqp.Message) => void) {
-        if (!this.channel) {
-            await this.connect();
-        }
+        await this.connect();
         await this.channel.assertQueue(queue, { durable: false });
         this.channel.consume(queue, callback, { noAck: true });
     }

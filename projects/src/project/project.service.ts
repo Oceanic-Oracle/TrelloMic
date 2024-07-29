@@ -1,14 +1,12 @@
 import { HttpException, HttpStatus, Injectable } from "@nestjs/common";
 import { PrismaService } from "src/prisma/prisma.service";
 import { CreateProjectDto } from "./dto/get-project.dto";
-import { HttpService } from "@nestjs/axios";
-import { catchError, lastValueFrom } from "rxjs";
-import { AxiosResponse } from "axios";
+import { RabbitMQService } from "src/rabbitmq.service";
 
 @Injectable()
 export class ProjectService {
     constructor(private readonly prismaService: PrismaService,
-        private readonly httpService: HttpService
+        private readonly rabbitMQService: RabbitMQService
     ) {}
 
     async getProjects(req) {
@@ -71,26 +69,33 @@ export class ProjectService {
     private async tokenUserId(req): Promise<any> {
         try {
             const token = req.headers.authorization.split(' ')[1];
-      
-        const request$ = this.httpService.post('http://localhost:8080/auth/mic', {
-            token: token,
-        }, {
-              headers: {
-                'Content-Type': 'application/json',
-            },
-        }).pipe(
-              catchError(error => {
-                throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
-            }),
-        );
-      
-            const response: AxiosResponse<{ id: number }> = await lastValueFrom(request$);
-
-            console.log(response.data.id)
-      
-            return response.data.id;
+            const correlationId = this.generateUuid();
+            const responseQueue = 'auth_response_userId';
+    
+            await this.rabbitMQService.publish('auth_userId', JSON.stringify({ token }), {
+                correlationId: correlationId,
+                replyTo: responseQueue
+            });
+    
+            return new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new HttpException('Request timeout', HttpStatus.REQUEST_TIMEOUT));
+                }, 10000);
+    
+                this.rabbitMQService.consume(responseQueue, (msg) => {
+                    if (msg.properties.correlationId === correlationId) {
+                        clearTimeout(timeout);
+                        const response = JSON.parse(msg.content.toString());
+                        resolve(response.id);
+                    }
+                });
+            });
         } catch (error) {
             throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
         }
     }
+    
+    private generateUuid(): string {
+        return Math.random().toString() + Math.random().toString() + Math.random().toString();
+    }      
 }

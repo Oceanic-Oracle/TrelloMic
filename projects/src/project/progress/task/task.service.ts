@@ -70,6 +70,8 @@ export class TaskService {
         );
       
             const response: AxiosResponse<{ id: number }> = await lastValueFrom(request$);
+
+            console.log(response.data.id)
       
             return response.data.id;
         } catch (error) {
