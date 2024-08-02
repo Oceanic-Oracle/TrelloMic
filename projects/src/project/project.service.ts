@@ -2,6 +2,7 @@ import { HttpException, HttpStatus, Injectable } from "@nestjs/common";
 import { PrismaService } from "src/prisma/prisma.service";
 import { CreateProjectDto } from "./dto/get-project.dto";
 import { RabbitMQService } from "src/rabbitmq.service";
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class ProjectService {
@@ -69,33 +70,49 @@ export class ProjectService {
     private async tokenUserId(req): Promise<any> {
         try {
             const token = req.headers.authorization.split(' ')[1];
-            const correlationId = this.generateUuid();
-            const responseQueue = 'auth_response_userId';
+            const responseQueue = 'auth_user_userId';
+            const requestQueue = 'auth_project_userId';
+            const correlationId = uuidv4();
+            console.log('Generated correlationId:', correlationId);
     
-            await this.rabbitMQService.publish('auth_userId', JSON.stringify({ token }), {
-                correlationId: correlationId,
-                replyTo: responseQueue
-            });
+            await this.rabbitMQService.publish(requestQueue, JSON.stringify({ token }), { correlationId: correlationId });
+            console.log('Published message with correlationId:', correlationId);
     
             return new Promise((resolve, reject) => {
                 const timeout = setTimeout(() => {
                     reject(new HttpException('Request timeout', HttpStatus.REQUEST_TIMEOUT));
                 }, 10000);
     
-                this.rabbitMQService.consume(responseQueue, (msg) => {
-                    if (msg.properties.correlationId === correlationId) {
-                        clearTimeout(timeout);
-                        const response = JSON.parse(msg.content.toString());
-                        resolve(response.id);
+                const consumeHandler = (msg) => {
+                    try {
+                        console.log('Received message:', msg);
+    
+                        const receivedCorrelationId = msg.properties.correlationId;
+                        console.log('Received correlationId:', receivedCorrelationId);
+                        console.log('Expected correlationId:', correlationId);
+    
+                        if (receivedCorrelationId === correlationId) {
+                            console.log('Received message with matching correlationId:', correlationId);
+                            clearTimeout(timeout);
+                            const response = JSON.parse(msg.content.toString());
+                            console.log('Parsed response:', response);
+                            this.rabbitMQService.ack(msg);
+    
+                            resolve(response.id);
+                        } else {
+                            console.log('Received message with different correlationId:', receivedCorrelationId);
+                        }
+                    } catch (error) {
+                        console.error('Error processing message:', error);
+                        reject(new HttpException('Internal server error', HttpStatus.INTERNAL_SERVER_ERROR));
                     }
-                });
+                };
+    
+                this.rabbitMQService.consume(responseQueue, consumeHandler);
             });
         } catch (error) {
+            console.error('Error in tokenUserId:', error);
             throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
         }
     }
-    
-    private generateUuid(): string {
-        return Math.random().toString() + Math.random().toString() + Math.random().toString();
-    }      
 }
