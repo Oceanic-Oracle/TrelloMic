@@ -1,0 +1,100 @@
+services:
+  authentication:
+    container_name: authentication
+    build:
+      context: ./authentication
+      dockerfile: Dockerfile
+    environment:
+      - PORT=8080
+      - DATABASE_URL=postgres://postgres:241265@postgres-golang:5432/auth
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+      - JWT_KEY=secret_ket_sdnsdbn
+    volumes:
+      - ./authentication:/usr/local/src
+    ports:
+      - '8080:8080'
+    depends_on:
+      - postgres-golang
+      - rabbitmq
+    restart: on-failure
+
+  microservice:
+    container_name: microservice
+    build:
+      context: ./microservice
+      dockerfile: Dockerfile
+    volumes:
+      - ./microservice:/app
+    environment:
+      - PORT=8080
+      - DATABASE_URL=postgres://postgres:241265@postgres-microservice:5432/projects
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+    command: sh -c "npx prisma migrate dev --name init && npm run start:dev"
+    ports:
+      - '8081:8080'
+    depends_on:
+      - postgres-microservice
+      - rabbitmq
+    restart: on-failure
+
+  httpserver:
+    container_name: httpserver
+    build:
+      context: ./httpserver
+      dockerfile: Dockerfile
+    environment:
+      - PORT=8082
+      - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672
+    volumes:
+      - ./httpserver:/app
+    command: sh -c "npm run start:dev"
+    ports:
+      - '8082:8080'
+    depends_on:
+      - rabbitmq
+    restart: on-failure
+
+  postgres-golang:
+    container_name: postgres_auth
+    image: postgres:16
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      POSTGRES_DB: 'auth'
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: '241265'
+    ports:
+      - '5433:5432'
+    volumes:
+      - postgres-golang-data:/var/lib/postgresql/data
+    restart: on-failure
+
+  postgres-microservice:
+    container_name: postgres_projects
+    image: postgres:16
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      POSTGRES_DB: 'projects'
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: '241265'
+    ports:
+      - '5434:5432'
+    volumes:
+      - postgres-node-data:/var/lib/postgresql/data
+    restart: on-failure
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    restart: on-failure
+
+volumes:
+  postgres-golang-data:
+  postgres-node-data:
+  rabbitmq-data:
